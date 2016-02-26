@@ -2,7 +2,7 @@
     'use strict';
     
     angular
-        .module('demo')
+        .module('app.demo')
         .controller('DemoController', DemoController);
     
     DemoController.$inject = ['$q', '$http', '$sce', '$timeout'];
@@ -166,7 +166,7 @@
             vm.waiting = false;
             vm.loading = true;
             vm.diff = null;
-            $http.post('index.php', {
+            $http.post('htmldiff.php', {
                     oldText: vm.oldText,
                     newText: vm.newText,
                     matchThreshold: vm.matchThreshold,

@@ -1,0 +1,60 @@
+<h1>Tracker</h1>
+<button type="button" class="btn btn-sm btn-secondary" ng-click="vm.reload()">
+    <i class="fa fa-refresh"></i>
+</button>
+
+<button type="button" class="btn btn-sm btn-info" ng-click="vm.reindex()">Re-Index Tracker Data</button>
+<h3 ng-show="vm.loading">Loading ...</h3>
+<div ng-show="vm.reindexing">
+    <h3>Re-Indexing ... may take a bit...</h3>
+    <progress class="progress progress-striped progress-animated" max="100" value="{{vm.progressValue}}">{{ vm.progressValue }}%</progress>
+</div>
+
+<div ng-show="vm.error">
+    ERRORS
+    {{ vm.errorDescription }}
+</div>
+
+<div
+    class="card"
+    ng-class="{'card-info': tableDiff.trackerData.status == 'hashChanged', 'card-danger': tableDiff.trackerData.status == 'declined' }"
+    ng-repeat="tableDiff in vm.tableDiffs track by tableDiff.id"
+>
+    <div class="card-header">
+        <div class="row">
+            <div class="col-md-6">
+                ID: {{ tableDiff.id }} ({{ tableDiff.demoIndex }})<br>
+                Status: {{ tableDiff.trackerData.status }}<br>
+                <span ng-show="tableDiff.prevStatus">Prev. Status: {{ tableDiff.trackerData.prevStatus }}</span>
+            </div>
+
+            <div class="col-md-6">
+                <div class="pull-right">
+                    <button type="button" class="btn btn-primary" ng-click="vm.setStatus(tableDiff, 'accepted')">Accept</button>
+                    <button type="button" class="btn btn-secondary" ng-click="vm.setStatus(tableDiff, 'declined')">Decline</button>
+                    <button type="button" class="btn btn-info" ng-click="vm.setStatus(tableDiff, 'skip')">Skip</button>
+                    <button type="button" class="btn btn-info" ng-show="!tableDiff.showSource" ng-click="tableDiff.showSource = true">Show Source</button>
+                    <button type="button" class="btn btn-info" ng-show="tableDiff.showSource" ng-click="tableDiff.showSource = false">Hide Source</button>
+                </div>
+            </div>
+
+        </div>
+    </div>
+    <div class="card-block">
+        <div ng-bind-html="vm.trustHtml(tableDiff.diff)"></div>
+    </div>
+    <div class="card-block" ng-if="tableDiff.showSource">
+        <div class="row">
+            <div class="col-md-6" ng-bind-html="vm.trustHtml(tableDiff.old)"></div>
+            <div class="col-md-6" ng-bind-html="vm.trustHtml(tableDiff.new)"></div>
+        </div>
+    </div>
+
+    <div class="card-footer">
+        <button type="button" class="btn btn-primary" ng-click="vm.setStatus(tableDiff, 'accepted')">Accept</button>
+        <button type="button" class="btn btn-secondary" ng-click="vm.setStatus(tableDiff, 'declined')">Decline</button>
+        <button type="button" class="btn btn-info" ng-click="vm.setStatus(tableDiff, 'skip')">Skip</button>
+        <button type="button" class="btn btn-info" ng-show="!tableDiff.showSource" ng-click="tableDiff.showSource = true">Show Source</button>
+        <button type="button" class="btn btn-info" ng-show="tableDiff.showSource" ng-click="tableDiff.showSource = false">Hide Source</button>
+    </div>
+</div><!-- end of card -->
