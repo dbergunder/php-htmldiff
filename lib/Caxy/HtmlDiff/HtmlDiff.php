@@ -49,6 +49,7 @@ class HtmlDiff extends AbstractDiff
         'em' => '[[REPLACE_EM]]',
         'i' => '[[REPLACE_I]]',
         'a' => '[[REPLACE_A]]',
+        'img' => '[[REPLACE_IMG]]',
     );
     /**
      * @var bool
@@ -132,28 +133,39 @@ class HtmlDiff extends AbstractDiff
     protected function createIsolatedDiffTagPlaceholders(&$words)
     {
         $openIsolatedDiffTags = 0;
-        $isolatedDiffTagIndicies = array();
+        $isolatedDiffTagIndices = array();
         $isolatedDiffTagStart = 0;
         $currentIsolatedDiffTag = null;
         foreach ($words as $index => $word) {
             $openIsolatedDiffTag = $this->isOpeningIsolatedDiffTag($word, $currentIsolatedDiffTag);
             if ($openIsolatedDiffTag) {
-                if ($openIsolatedDiffTags === 0) {
-                    $isolatedDiffTagStart = $index;
+                if ($this->isSelfClosingTag($word) || stripos($word, '<img') !== false) {
+                    if ($openIsolatedDiffTags === 0) {
+                        $isolatedDiffTagIndices[] = array(
+                            'start'   => $index,
+                            'length'  => 1,
+                            'tagType' => $openIsolatedDiffTag,
+                        );
+                        $currentIsolatedDiffTag = null;
+                    }
+                } else {
+                    if ($openIsolatedDiffTags === 0) {
+                        $isolatedDiffTagStart = $index;
+                    }
+                    $openIsolatedDiffTags++;
+                    $currentIsolatedDiffTag = $openIsolatedDiffTag;
                 }
-                $openIsolatedDiffTags++;
-                $currentIsolatedDiffTag = $openIsolatedDiffTag;
             } elseif ($openIsolatedDiffTags > 0 && $this->isClosingIsolatedDiffTag($word, $currentIsolatedDiffTag)) {
                 $openIsolatedDiffTags--;
                 if ($openIsolatedDiffTags == 0) {
-                    $isolatedDiffTagIndicies[] = array ('start' => $isolatedDiffTagStart, 'length' => $index - $isolatedDiffTagStart + 1, 'tagType' => $currentIsolatedDiffTag);
+                    $isolatedDiffTagIndices[] = array ('start' => $isolatedDiffTagStart, 'length' => $index - $isolatedDiffTagStart + 1, 'tagType' => $currentIsolatedDiffTag);
                     $currentIsolatedDiffTag = null;
                 }
             }
         }
         $isolatedDiffTagScript = array();
         $offset = 0;
-        foreach ($isolatedDiffTagIndicies as $isolatedDiffTagIndex) {
+        foreach ($isolatedDiffTagIndices as $isolatedDiffTagIndex) {
             $start = $isolatedDiffTagIndex['start'] - $offset;
             $placeholderString = $this->isolatedDiffTags[$isolatedDiffTagIndex['tagType']];
             $isolatedDiffTagScript[$start] = array_splice($words, $start, $isolatedDiffTagIndex['length'], $placeholderString);
@@ -182,6 +194,11 @@ class HtmlDiff extends AbstractDiff
         }
 
         return false;
+    }
+
+    protected function isSelfClosingTag($text)
+    {
+        return (bool) preg_match('/<[^>]+\/\s*>/', $text);
     }
 
     /**
@@ -267,6 +284,7 @@ class HtmlDiff extends AbstractDiff
         foreach ($this->oldWords as $pos => $s) {
             if ($pos >= $operation->startInOld && $pos < $operation->endInOld) {
                 if (in_array($s, $this->isolatedDiffTags) && isset($this->oldIsolatedDiffTags[$pos])) {
+                    addDebugOutput('made it here', __METHOD__);
                     foreach ($this->oldIsolatedDiffTags[$pos] as $word) {
                         $text[] = $word;
                     }
@@ -296,7 +314,9 @@ class HtmlDiff extends AbstractDiff
         } elseif ($this->useTableDiffing && $this->isTablePlaceholder($placeholder)) {
             return $this->diffTables($oldText, $newText);
         } elseif ($this->isLinkPlaceholder($placeholder)) {
-            return $this->diffLinks($oldText, $newText);
+            return $this->diffElementsByAttribute($oldText, $newText, 'href');
+        } elseif ($this->isImagePlaceholder($placeholder)) {
+            return $this->diffElementsByAttribute($oldText, $newText, 'src');
         }
 
         return $this->diffElements($oldText, $newText, $stripWrappingTags);
@@ -359,22 +379,19 @@ class HtmlDiff extends AbstractDiff
         return $diff->build();
     }
 
-    /**
-     * @param string $oldText
-     * @param string $newText
-     *
-     * @return string
-     */
-    protected function diffLinks($oldText, $newText)
+    protected function diffElementsByAttribute($oldText, $newText, $attribute)
     {
-        $oldHref = $this->getAttributeFromTag($oldText, 'href');
-        $newHref = $this->getAttributeFromTag($newText, 'href');
+        addDebugOutput('and here', __METHOD__);
+        $oldAttribute = $this->getAttributeFromTag($oldText, $attribute);
+        $newAttribute = $this->getAttributeFromTag($newText, $attribute);
 
-        if ($oldHref != $newHref) {
+        $diffClass = sprintf('diffmod diff%s', $attribute);
+
+        if ($oldAttribute != $newAttribute) {
             return sprintf(
                 '%s%s',
-                $this->wrapText($oldText, 'del', 'diffmod diff-href'),
-                $this->wrapText($newText, 'ins', 'diffmod diff-href')
+                $this->wrapText($oldText, 'del', $diffClass),
+                $this->wrapText($newText, 'ins', $diffClass)
             );
         }
 
@@ -410,8 +427,8 @@ class HtmlDiff extends AbstractDiff
     protected function getAttributeFromTag($text, $attribute)
     {
         $matches = array();
-        if (preg_match(sprintf('/<a\s+[^>]*%s=([\'"])(.*)\1[^>]*>/i', $attribute), $text, $matches)) {
-            return $matches[2];
+        if (preg_match(sprintf('/<a\s+[^>]*\b%s\s*=\s*([\'"])(.*)\1[^>]*>/i', $attribute), $text, $matches)) {
+            return htmlspecialchars_decode($matches[2]);
         }
 
         return null;
@@ -435,6 +452,16 @@ class HtmlDiff extends AbstractDiff
     public function isLinkPlaceholder($text)
     {
         return $this->isPlaceholderType($text, 'a');
+    }
+
+    /**
+     * @param string $text
+     *
+     * @return bool
+     */
+    public function isImagePlaceholder($text)
+    {
+        return $this->isPlaceholderType($text, 'img');
     }
 
     /**
@@ -543,7 +570,12 @@ class HtmlDiff extends AbstractDiff
                         $workTag[ 0 ] = str_replace( ">", ' class="diffmod">', $workTag[ 0 ] );
                     }
                 }
-                $this->content .= implode( "", $workTag ) . $specialCaseTagInjection;
+
+                $appendContent = implode( "", $workTag ) . $specialCaseTagInjection;
+                if (isset($workTag[0]) && false !== stripos($workTag[0], '<img')) {
+                    $appendContent = $this->wrapText($appendContent, $tag, $cssClass);
+                }
+                $this->content .= $appendContent;
             }
         }
     }
